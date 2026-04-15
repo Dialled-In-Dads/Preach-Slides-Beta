@@ -1324,93 +1324,220 @@ function toggleZoneQuote() {
 // DOWNLOAD
 // ══════════════════════════════════
 
+// Read helpers — live values from the sidebar inputs
+function _v(id, fallback) {
+  const el = document.getElementById(id);
+  return (el && el.value != null && el.value !== '') ? el.value : (fallback||'');
+}
+
+function _setLS(ctx, px) { try { ctx.letterSpacing = px + 'px'; } catch(e){} }
+
 function downloadSlide() {
-  // Find which tab is active
   const activePanel = document.querySelector('.spanel.on');
   if(!activePanel) return;
   const id = activePanel.id.replace('tab-','');
-  const cid = canvases[id];
-  if(!cid) return;
+  if(!canvases[id]) return;
+  renderSlideToPNG(id, `junction_${id}_${curBG}.png`);
+}
 
-  // Composite: bg canvas + text rendered on top
+function downloadAll() {
+  ['scripture','title','point','quote'].forEach((type,i) => {
+    setTimeout(()=>{
+      renderSlideToPNG(type, `junction_${(i+1).toString().padStart(2,'0')}_${type}_${curBG}.png`);
+    }, i*700);
+  });
+}
+
+function renderSlideToPNG(slideType, filename) {
   const off = document.createElement('canvas');
   off.width = W; off.height = H;
   const ctx = off.getContext('2d');
-  // Draw background
+  // 1. Background
   getBGFn()(ctx, W, H, curAccent, curDark);
-  // Draw text layer — render the slide content onto canvas
-  drawTextLayer(ctx, id);
+  // 2. Text layer (reads live DOM values)
+  drawTextLayer(ctx, slideType);
 
   const link = document.createElement('a');
-  link.download = `junction_${id}_${curBG}.png`;
+  link.download = filename;
   link.href = off.toDataURL('image/png');
   link.click();
 }
 
 function drawTextLayer(ctx, slideType) {
   const accent = curAccent;
-  const {r,g,b} = hexToRgb(accent);
-
   ctx.save();
+  ctx.textBaseline = 'top';
 
-  if(slideType === 'scripture') {
-    // Left bar
-    ctx.fillStyle = accent;
-    ctx.fillRect(0, H*.04, 8, H*.32);
-    // Background for text area
-    const gbg = ctx.createLinearGradient(0,0,W*.4,0);
-    gbg.addColorStop(0,'rgba(0,0,0,.55)');
-    gbg.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=gbg; ctx.fillRect(0,H*.04,W,H*.36);
-    // Eyebrow
-    ctx.fillStyle=accent; ctx.font=`700 ${Math.round(H*.018)}px Montserrat,sans-serif`;
-    ctx.letterSpacing='5px'; ctx.fillText('SCRIPTURE', W*.065, H*.1);
-    // Verse
-    ctx.fillStyle='white'; ctx.font=`700 ${Math.round(H*.036)}px Montserrat,sans-serif`;
-    wrapText(ctx,'"For God so loved the world that he gave his one and only Son, that whoever believes in him shall not perish but have eternal life."',W*.065,H*.155,W*.82,H*.046);
-    // Ref
-    ctx.fillStyle=accent; ctx.font=`${Math.round(H*.028)}px Anton,sans-serif`;
-    ctx.fillText('John 3:16', W*.065, H*.33);
-  }
+  if(slideType === 'scripture') drawScripture(ctx, accent);
+  else if(slideType === 'title') drawTitle(ctx, accent);
+  else if(slideType === 'point') drawPoint(ctx, accent);
+  else if(slideType === 'quote') drawQuote(ctx, accent);
 
-  // Series watermark
-  ctx.fillStyle='rgba(255,255,255,.35)';
-  ctx.fillRect(W*.9, H*.88, W*.05, 2);
-  ctx.font=`700 ${Math.round(H*.016)}px Montserrat,sans-serif`;
-  ctx.fillText('Keep The Main Thing', W*.84, H*.93);
-
+  drawWatermark(ctx);
   ctx.restore();
 }
 
+// ── SCRIPTURE ─────────────────────────────
+function drawScripture(ctx, accent) {
+  const eyebrow = _v('e_eyebrow', 'Scripture');
+  const verse   = _v('e_verse', '');
+  const ref     = _v('e_ref', '');
+
+  const xText = W*.085;
+  const xBar  = W*.07;
+
+  // Subtle dark gradient behind content area for legibility
+  const gbg = ctx.createLinearGradient(0, 0, W*.6, 0);
+  gbg.addColorStop(0, 'rgba(0,0,0,.55)');
+  gbg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gbg;
+  ctx.fillRect(0, H*.045, W*.7, H*.3);
+
+  // Left accent bar
+  ctx.fillStyle = accent;
+  ctx.fillRect(xBar, H*.06, 10, H*.26);
+
+  // Eyebrow
+  ctx.fillStyle = accent;
+  ctx.font = `700 ${Math.round(H*.022)}px Montserrat, sans-serif`;
+  _setLS(ctx, 5);
+  ctx.fillText(eyebrow.toUpperCase(), xText, H*.075);
+  _setLS(ctx, 0);
+
+  // Verse
+  ctx.fillStyle = 'white';
+  ctx.font = `700 ${Math.round(H*.042)}px Montserrat, sans-serif`;
+  const afterVerse = wrapText(ctx, verse, xText, H*.125, W*.82, H*.058);
+
+  // Reference
+  ctx.fillStyle = accent;
+  ctx.font = `${Math.round(H*.036)}px Anton, sans-serif`;
+  _setLS(ctx, 4);
+  ctx.fillText(ref.toUpperCase(), xText, Math.min(afterVerse + H*.025, H*.32));
+  _setLS(ctx, 0);
+}
+
+// ── SERIES TITLE ──────────────────────────
+function drawTitle(ctx, accent) {
+  const micro   = 'Junction Church · Series';
+  const line1   = _v('e_seriesName',  'Keep The');
+  const line2   = _v('e_seriesAccent','Main Thing');
+  const line3   = _v('e_seriesLine3', 'The Main Thing');
+  const speaker = _v('e_speaker',     '');
+
+  const xText = W*.06;
+
+  // Micro series label
+  ctx.fillStyle = 'rgba(255,255,255,.5)';
+  ctx.font = `700 ${Math.round(H*.018)}px Montserrat, sans-serif`;
+  _setLS(ctx, 6);
+  ctx.fillText(micro.toUpperCase(), xText, H*.07);
+  _setLS(ctx, 0);
+
+  // Big title — 3 lines, middle line in accent
+  ctx.font = `${Math.round(H*.11)}px Anton, sans-serif`;
+  const lineH = H*.1;
+  let y = H*.11;
+  ctx.fillStyle = 'white'; ctx.fillText(line1.toUpperCase(), xText, y);
+  y += lineH;
+  ctx.fillStyle = accent;  ctx.fillText(line2.toUpperCase(), xText, y);
+  y += lineH;
+  ctx.fillStyle = 'white'; ctx.fillText(line3.toUpperCase(), xText, y);
+
+  // Speaker / date
+  ctx.fillStyle = 'rgba(255,255,255,.45)';
+  ctx.font = `700 ${Math.round(H*.02)}px Montserrat, sans-serif`;
+  _setLS(ctx, 4);
+  ctx.fillText(speaker.toUpperCase(), xText, y + lineH*1.05);
+  _setLS(ctx, 0);
+}
+
+// ── POINT ─────────────────────────────────
+function drawPoint(ctx, accent) {
+  const label = _v('e_ptLabel', 'Point 01 —');
+  const l1    = _v('e_ptLine1', 'Keep the');
+  const l2    = _v('e_ptAccent','MAIN THING');
+  const l3    = _v('e_ptLine3', 'the main thing');
+
+  const xText = W*.06;
+
+  // Label
+  ctx.fillStyle = accent;
+  ctx.font = `700 ${Math.round(H*.02)}px Montserrat, sans-serif`;
+  _setLS(ctx, 5);
+  ctx.fillText(label.toUpperCase(), xText, H*.065);
+  _setLS(ctx, 0);
+
+  // Big point text — 3 lines
+  ctx.font = `${Math.round(H*.1)}px "League Gothic", sans-serif`;
+  const lineH = H*.09;
+  let y = H*.1;
+  ctx.fillStyle = 'white'; ctx.fillText(l1.toUpperCase(), xText, y);
+  y += lineH;
+  ctx.fillStyle = accent;  ctx.fillText(l2.toUpperCase(), xText, y);
+  y += lineH;
+  ctx.fillStyle = 'white'; ctx.fillText(l3.toUpperCase(), xText, y);
+}
+
+// ── QUOTE ─────────────────────────────────
+function drawQuote(ctx, accent) {
+  const quote   = _v('e_quote', '');
+  const author  = _v('e_quoteAuthor', '');
+
+  const xText = W*.06;
+
+  // Big quote mark
+  ctx.fillStyle = accent;
+  ctx.globalAlpha = .25;
+  ctx.font = `${Math.round(H*.14)}px Anton, sans-serif`;
+  ctx.fillText('"', xText, H*.03);
+  ctx.globalAlpha = 1;
+
+  // Quote body — italic bold
+  ctx.fillStyle = 'white';
+  ctx.font = `italic 700 ${Math.round(H*.04)}px Montserrat, sans-serif`;
+  const afterQuote = wrapText(ctx, quote, xText, H*.16, W*.84, H*.056);
+
+  // Attribution
+  ctx.fillStyle = 'rgba(255,255,255,.55)';
+  ctx.font = `700 ${Math.round(H*.02)}px Montserrat, sans-serif`;
+  _setLS(ctx, 4);
+  ctx.fillText(author.toUpperCase(), xText, Math.min(afterQuote + H*.025, H*.33));
+  _setLS(ctx, 0);
+}
+
+// ── WATERMARK (all slides) ────────────────
+function drawWatermark(ctx) {
+  const wmText = _v('e_watermark', 'Keep The Main Thing');
+  ctx.globalAlpha = .5;
+  ctx.fillStyle = 'white';
+  // little line
+  ctx.fillRect(W*.895, H*.895, W*.055, 2);
+  // text
+  ctx.font = `${Math.round(H*.02)}px Anton, sans-serif`;
+  _setLS(ctx, 3);
+  const metrics = ctx.measureText(wmText.toUpperCase());
+  ctx.fillText(wmText.toUpperCase(), W*.95 - metrics.width, H*.915);
+  _setLS(ctx, 0);
+  ctx.globalAlpha = 1;
+}
+
+// Returns the y-coordinate immediately below the last rendered line
 function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-  const words = text.split(' ');
+  if(!text) return y;
+  const words = String(text).split(/\s+/);
   let line = '';
   let cy = y;
-  for(let n=0;n<words.length;n++){
+  for(let n=0; n<words.length; n++){
     const testLine = line + words[n] + ' ';
-    const metrics = ctx.measureText(testLine);
-    if(metrics.width > maxWidth && n > 0) {
-      ctx.fillText(line, x, cy);
+    if(ctx.measureText(testLine).width > maxWidth && n > 0) {
+      ctx.fillText(line.trim(), x, cy);
       line = words[n] + ' ';
       cy += lineHeight;
     } else { line = testLine; }
   }
-  ctx.fillText(line, x, cy);
-}
-
-function downloadAll() {
-  ['scripture','title','point','quote'].forEach((type,i) => {
-    setTimeout(()=>{
-      const off = document.createElement('canvas');
-      off.width=W; off.height=H;
-      const ctx=off.getContext('2d');
-      getBGFn()(ctx,W,H,curAccent,curDark);
-      const link=document.createElement('a');
-      link.download=`junction_${(i+1).toString().padStart(2,'0')}_${type}_${curBG}.png`;
-      link.href=off.toDataURL('image/png');
-      link.click();
-    }, i*700);
-  });
+  ctx.fillText(line.trim(), x, cy);
+  return cy + lineHeight;
 }
 
 // ══════════════════════════════════
