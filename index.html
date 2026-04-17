@@ -259,6 +259,22 @@ canvas.bgc { position:absolute; inset:0; width:100%; height:100%; }
 .gcard h4 { font-size:10px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#FFD400; margin-bottom:8px; }
 .gcard p { font-size:10px; color:#555; line-height:1.7; }
 .gcard strong { color:#aaa; }
+
+/* ── PHOTO UPLOAD DROP ZONE ── */
+.photo-drop {
+  border:2px dashed #2a2a2a; border-radius:6px; padding:14px 10px;
+  text-align:center; cursor:pointer; margin-bottom:5px;
+  transition:all .2s; position:relative; overflow:hidden;
+}
+.photo-drop:hover { border-color:#444; }
+.photo-drop.active { border-color:#FFD400; background:rgba(255,212,0,.06); }
+.photo-drop.on { border-color:#FFD400; border-style:solid; }
+.photo-drop input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.photo-drop .pd-label { font-size:10px; font-weight:700; letter-spacing:1px; color:#555; pointer-events:none; }
+.photo-drop .pd-hint { font-size:8px; color:#333; letter-spacing:1px; margin-top:3px; pointer-events:none; }
+.photo-drop .pd-thumb { max-width:100%; max-height:60px; border-radius:3px; margin-top:6px; pointer-events:none; }
+.photo-clear { width:100%; background:#1a1a1a; border:1px solid #222; border-radius:4px; padding:6px; color:#888; font-family:'Montserrat',sans-serif; font-size:9px; font-weight:700; letter-spacing:1px; cursor:pointer; margin-bottom:5px; display:none; transition:all .15s; }
+.photo-clear:hover { border-color:#ff4444; color:#ff4444; }
 </style>
 </head>
 <body>
@@ -299,6 +315,15 @@ canvas.bgc { position:absolute; inset:0; width:100%; height:100%; }
       <button class="vbtn" onclick="setBG('canvas',this)">🖼️ Painted Canvas</button>
       <button class="vbtn" onclick="setBG('parchment',this)">📜 Soft Parchment</button>
       <button class="vbtn" onclick="setBG('morningsky',this)">🌤️ Morning Sky</button>
+
+      <div class="sbl">Or Upload Photo</div>
+      <div class="photo-drop" id="photoDrop" ondragover="event.preventDefault();this.classList.add('active')" ondragleave="this.classList.remove('active')" ondrop="event.preventDefault();this.classList.remove('active');handlePhotoDrop(event)">
+        <input type="file" accept="image/*" id="photoInput" onchange="handlePhotoSelect(this)">
+        <div class="pd-label" id="pdLabel">📷 DROP IMAGE OR CLICK</div>
+        <div class="pd-hint">JPG / PNG — used as slide background</div>
+        <img class="pd-thumb" id="pdThumb" style="display:none">
+      </div>
+      <button class="photo-clear" id="photoClear" onclick="clearPhoto()">✕ REMOVE PHOTO</button>
 
       <div class="sbl">Accent Colour</div>
       <div class="acc-row">
@@ -696,6 +721,7 @@ canvas.bgc { position:absolute; inset:0; width:100%; height:100%; }
 let curBG = 'brushstroke';
 let curAccent = '#FFD400';
 let curDark = 0.68;
+let uploadedImg = null;   // holds the loaded Image when user uploads a photo bg
 const W = 1920, H = 1200;
 
 const canvases = {
@@ -704,6 +730,21 @@ const canvases = {
   point: 'pointCanvas',
   quote: 'quoteCanvas'
 };
+
+// ══════════════════════════════════
+// PHOTO BG — cover-scale helper
+// ══════════════════════════════════
+function drawImageCover(ctx, img, w, h) {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  if (!iw || !ih) return;
+  const scale = Math.max(w / iw, h / ih);
+  const dw = iw * scale;
+  const dh = ih * scale;
+  const dx = (w - dw) / 2;
+  const dy = (h - dh) / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
+}
 
 // ══════════════════════════════════
 // BACKGROUND PAINTERS
@@ -1182,7 +1223,26 @@ function renderCanvas(canvasId) {
   if(!canvas) return;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0,0,W,H);
-  getBGFn()(ctx, W, H, curAccent, curDark);
+  drawBGOrPhoto(ctx, W, H);
+}
+
+// Unified BG render — photo with darkness overlay, or painted background
+function drawBGOrPhoto(ctx, w, h) {
+  if(uploadedImg) {
+    drawImageCover(ctx, uploadedImg, w, h);
+    // Apply darkness overlay so text stays readable
+    ctx.fillStyle = `rgba(0,0,0,${curDark * 0.85})`;
+    ctx.fillRect(0,0,w,h);
+    // Accent bloom in top-left for consistency
+    const {r,g,b} = hexToRgb(curAccent);
+    const ga = ctx.createRadialGradient(w*.08, h*.08, 0, w*.08, h*.08, w*.35);
+    ga.addColorStop(0, `rgba(${r},${g},${b},.18)`);
+    ga.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = ga; ctx.fillRect(0,0,w,h);
+    addHeavyGrain(ctx,w,h,0.03,11);
+  } else {
+    getBGFn()(ctx, w, h, curAccent, curDark);
+  }
 }
 
 function renderAll() {
@@ -1204,8 +1264,52 @@ function updateAccentColors() {
 // UI HANDLERS
 // ══════════════════════════════════
 
+// ── PHOTO UPLOAD HANDLERS ──
+function loadPhoto(file) {
+  if(!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      uploadedImg = img;
+      // Show thumbnail
+      const thumb = document.getElementById('pdThumb');
+      thumb.src = e.target.result;
+      thumb.style.display = 'block';
+      document.getElementById('pdLabel').textContent = '📷 ' + file.name;
+      document.getElementById('photoDrop').classList.add('on');
+      document.getElementById('photoClear').style.display = 'block';
+      // Deselect painted BG buttons
+      document.querySelectorAll('#sbStyle .vbtn').forEach(b => {
+        if(['brushstroke','watercolour','linen','canvas','parchment','morningsky'].some(n => b.onclick?.toString().includes(n)))
+          b.classList.remove('on');
+      });
+      renderAll();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function handlePhotoSelect(input) { if(input.files[0]) loadPhoto(input.files[0]); }
+function handlePhotoDrop(e) { if(e.dataTransfer.files[0]) loadPhoto(e.dataTransfer.files[0]); }
+function clearPhoto() {
+  uploadedImg = null;
+  document.getElementById('pdThumb').style.display = 'none';
+  document.getElementById('pdLabel').textContent = '📷 DROP IMAGE OR CLICK';
+  document.getElementById('photoDrop').classList.remove('on');
+  document.getElementById('photoClear').style.display = 'none';
+  document.getElementById('photoInput').value = '';
+  // Re-select the current painted BG
+  document.querySelectorAll('#sbStyle .vbtn').forEach(b => {
+    if(b.onclick?.toString().includes(curBG)) b.classList.add('on');
+  });
+  renderAll();
+}
+
 function setBG(name, btn) {
   curBG = name;
+  // Clear any uploaded photo when a painted bg is chosen
+  if(uploadedImg) clearPhoto();
   document.querySelectorAll('.vbtn').forEach(b=>{
     if(['brushstroke','watercolour','linen','canvas','parchment','morningsky'].some(n=>b.textContent.toLowerCase().includes(n.toLowerCase()) || b.onclick?.toString().includes(n))) {
       b.classList.remove('on');
@@ -1352,8 +1456,8 @@ function renderSlideToPNG(slideType, filename) {
   const off = document.createElement('canvas');
   off.width = W; off.height = H;
   const ctx = off.getContext('2d');
-  // 1. Background
-  getBGFn()(ctx, W, H, curAccent, curDark);
+  // 1. Background (photo or painted)
+  drawBGOrPhoto(ctx, W, H);
   // 2. Text layer (reads live DOM values)
   drawTextLayer(ctx, slideType);
 
