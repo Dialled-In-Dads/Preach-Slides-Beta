@@ -275,6 +275,19 @@ canvas.bgc { position:absolute; inset:0; width:100%; height:100%; }
 .photo-drop .pd-thumb { max-width:100%; max-height:60px; border-radius:3px; margin-top:6px; pointer-events:none; }
 .photo-clear { width:100%; background:#1a1a1a; border:1px solid #222; border-radius:4px; padding:6px; color:#888; font-family:'Montserrat',sans-serif; font-size:9px; font-weight:700; letter-spacing:1px; cursor:pointer; margin-bottom:5px; display:none; transition:all .15s; }
 .photo-clear:hover { border-color:#ff4444; color:#ff4444; }
+
+/* ── MULTI-POINT UI ── */
+.pt-nav { display:flex; align-items:center; gap:8px; margin-bottom:14px; max-width:900px; }
+.pt-nav-btn { background:#1a1a1a; border:1px solid #252525; color:#666; border-radius:4px; padding:6px 12px; font-size:11px; font-weight:700; cursor:pointer; transition:all .15s; font-family:'Montserrat',sans-serif; }
+.pt-nav-btn:hover { color:#fff; border-color:#444; }
+.pt-nav-btn:disabled { opacity:.3; cursor:default; }
+.pt-nav-label { font-size:10px; font-weight:700; letter-spacing:2px; color:#555; text-transform:uppercase; }
+.pt-add-btn { background:#1a2a1a; border:1px solid #2a4a2a; color:#4CAF50; border-radius:4px; padding:5px 12px; font-size:10px; font-weight:700; letter-spacing:1px; cursor:pointer; font-family:'Montserrat',sans-serif; transition:all .15s; }
+.pt-add-btn:hover { background:#2a3a2a; border-color:#4a6a4a; }
+.pt-rm-btn { background:#2a1a1a; border:1px solid #4a2a2a; color:#ff6b6b; border-radius:4px; padding:5px 10px; font-size:10px; font-weight:700; cursor:pointer; font-family:'Montserrat',sans-serif; transition:all .15s; }
+.pt-rm-btn:hover { background:#3a1a1a; border-color:#6a3a3a; }
+.pt-group { border:1px solid #1e1e1e; border-radius:5px; padding:10px; margin-bottom:8px; background:#0f0f0f; position:relative; }
+.pt-group-hdr { font-size:9px; font-weight:700; letter-spacing:2px; color:#FFD400; margin-bottom:6px; display:flex; align-items:center; justify-content:space-between; }
 </style>
 </head>
 <body>
@@ -386,22 +399,12 @@ canvas.bgc { position:absolute; inset:0; width:100%; height:100%; }
         <input class="einput" id="e_speaker" value="PS ROY TODD · SUNDAY 10AM" oninput="updateText()">
       </div>
 
-      <div class="sbl">💡 Point Slide</div>
-      <div class="egroup">
-        <label class="elabel">Point label</label>
-        <input class="einput" id="e_ptLabel" value="Point 01 —" oninput="updateText()">
+      <div class="sbl" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>💡 Points (<span id="ptCountLabel">1</span>)</span>
+        <button class="pt-add-btn" onclick="addPoint()">+ ADD</button>
       </div>
-      <div class="egroup">
-        <label class="elabel">Line 1</label>
-        <input class="einput" id="e_ptLine1" value="Keep the" oninput="updateText()">
-      </div>
-      <div class="egroup">
-        <label class="elabel">Accent word</label>
-        <input class="einput" id="e_ptAccent" value="MAIN THING" oninput="updateText()">
-      </div>
-      <div class="egroup">
-        <label class="elabel">Line 3</label>
-        <input class="einput" id="e_ptLine3" value="the main thing" oninput="updateText()">
+      <div id="pointFieldsContainer">
+        <!-- dynamically rendered by renderPointFields() -->
       </div>
 
       <div class="sbl">💬 Quote</div>
@@ -546,7 +549,13 @@ canvas.bgc { position:absolute; inset:0; width:100%; height:100%; }
     <!-- ═══ POINT PANEL ═══ -->
     <div class="spanel" id="tab-point">
       <p class="plabel">POINT HEADER · TOP ZONE ONLY</p>
-      <button class="zone-btn on" id="zonePointToggle" onclick="toggleZonePoint()">◉ SHOW SAFE ZONES</button>
+
+      <div class="pt-nav">
+        <button class="pt-nav-btn" id="ptPrev" onclick="navPoint(-1)">◀</button>
+        <span class="pt-nav-label" id="ptNavLabel">POINT 1 / 1</span>
+        <button class="pt-nav-btn" id="ptNext" onclick="navPoint(1)">▶</button>
+        <button class="zone-btn on" id="zonePointToggle" onclick="toggleZonePoint()" style="margin-left:auto">◉ SHOW SAFE ZONES</button>
+      </div>
 
       <div class="slide-outer" id="pointSlide">
         <canvas class="bgc" id="pointCanvas" width="1920" height="1200"></canvas>
@@ -723,6 +732,12 @@ let curAccent = '#FFD400';
 let curDark = 0.68;
 let uploadedImg = null;   // holds the loaded Image when user uploads a photo bg
 const W = 1920, H = 1200;
+
+// ── MULTI-POINT STATE ──
+let points = [
+  { label:'Point 01 —', line1:'Keep the', accent:'MAIN THING', line3:'the main thing' }
+];
+let curPointIdx = 0;
 
 const canvases = {
   scripture: 'mainCanvas',
@@ -1306,6 +1321,119 @@ function clearPhoto() {
   renderAll();
 }
 
+// ── MULTI-POINT MANAGEMENT ──
+function renderPointFields() {
+  const container = document.getElementById('pointFieldsContainer');
+  if(!container) return;
+  // Save current field values back to array before re-render
+  savePointFields();
+  let html = '';
+  points.forEach((pt, i) => {
+    const active = i === curPointIdx;
+    html += `<div class="pt-group" style="${active?'border-color:#FFD400;':''}">
+      <div class="pt-group-hdr">
+        <span style="cursor:pointer" onclick="goToPoint(${i})">POINT ${(i+1).toString().padStart(2,'0')}</span>
+        ${points.length > 1 ? `<button class="pt-rm-btn" onclick="removePoint(${i})">✕</button>` : ''}
+      </div>
+      <div class="egroup"><label class="elabel">Label</label>
+        <input class="einput" id="e_pt_${i}_label" value="${escH(pt.label)}" oninput="onPointInput(${i})"></div>
+      <div class="egroup"><label class="elabel">Line 1</label>
+        <input class="einput" id="e_pt_${i}_line1" value="${escH(pt.line1)}" oninput="onPointInput(${i})"></div>
+      <div class="egroup"><label class="elabel">Accent word</label>
+        <input class="einput" id="e_pt_${i}_accent" value="${escH(pt.accent)}" oninput="onPointInput(${i})"></div>
+      <div class="egroup"><label class="elabel">Line 3</label>
+        <input class="einput" id="e_pt_${i}_line3" value="${escH(pt.line3)}" oninput="onPointInput(${i})"></div>
+    </div>`;
+  });
+  container.innerHTML = html;
+  document.getElementById('ptCountLabel').textContent = points.length;
+  updatePointNav();
+}
+
+function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+function savePointFields() {
+  points.forEach((pt, i) => {
+    const lbl = document.getElementById(`e_pt_${i}_label`);
+    if(lbl) {
+      pt.label  = lbl.value;
+      pt.line1  = document.getElementById(`e_pt_${i}_line1`).value;
+      pt.accent = document.getElementById(`e_pt_${i}_accent`).value;
+      pt.line3  = document.getElementById(`e_pt_${i}_line3`).value;
+    }
+  });
+}
+
+function onPointInput(idx) {
+  // Save this point's fields live
+  const pt = points[idx];
+  pt.label  = document.getElementById(`e_pt_${idx}_label`).value;
+  pt.line1  = document.getElementById(`e_pt_${idx}_line1`).value;
+  pt.accent = document.getElementById(`e_pt_${idx}_accent`).value;
+  pt.line3  = document.getElementById(`e_pt_${idx}_line3`).value;
+  // If this is the currently previewed point, update preview
+  if(idx === curPointIdx) updatePointPreview();
+}
+
+function addPoint() {
+  if(points.length >= 10) return;
+  savePointFields();
+  const n = points.length + 1;
+  points.push({ label:`Point ${n.toString().padStart(2,'0')} —`, line1:'', accent:'', line3:'' });
+  curPointIdx = points.length - 1;
+  renderPointFields();
+  updatePointPreview();
+}
+
+function removePoint(idx) {
+  if(points.length <= 1) return;
+  savePointFields();
+  points.splice(idx, 1);
+  // Re-label remaining points
+  points.forEach((pt, i) => {
+    pt.label = `Point ${(i+1).toString().padStart(2,'0')} —`;
+  });
+  if(curPointIdx >= points.length) curPointIdx = points.length - 1;
+  renderPointFields();
+  updatePointPreview();
+}
+
+function goToPoint(idx) {
+  savePointFields();
+  curPointIdx = idx;
+  renderPointFields();
+  updatePointPreview();
+}
+
+function navPoint(dir) {
+  savePointFields();
+  curPointIdx = Math.max(0, Math.min(points.length-1, curPointIdx + dir));
+  renderPointFields();
+  updatePointPreview();
+}
+
+function updatePointNav() {
+  const label = document.getElementById('ptNavLabel');
+  const prev = document.getElementById('ptPrev');
+  const next = document.getElementById('ptNext');
+  if(label) label.textContent = `POINT ${curPointIdx+1} / ${points.length}`;
+  if(prev) prev.disabled = curPointIdx === 0;
+  if(next) next.disabled = curPointIdx >= points.length - 1;
+}
+
+function updatePointPreview() {
+  const pt = points[curPointIdx];
+  if(!pt) return;
+  document.getElementById('ptLabel').textContent = pt.label;
+  const ptText = document.querySelector('.pt-text');
+  if(ptText) ptText.innerHTML =
+    escH(pt.line1) + '<br>' +
+    '<span id="ptAccent" style="color:'+curAccent+'">' + escH(pt.accent) + '</span><br>' +
+    escH(pt.line3);
+  updatePointNav();
+  updateAccentColors();
+}
+
 function setBG(name, btn) {
   curBG = name;
   // Clear any uploaded photo when a painted bg is chosen
@@ -1361,13 +1489,9 @@ function updateText() {
     el.textContent = document.getElementById('e_speaker').value;
   });
 
-  // Point slide
-  document.getElementById('ptLabel').textContent = document.getElementById('e_ptLabel').value;
-  const ptText = document.querySelector('.pt-text');
-  if(ptText) ptText.innerHTML =
-    document.getElementById('e_ptLine1').value + '<br>' +
-    '<span id="ptAccent" style="color:'+curAccent+'">'+document.getElementById('e_ptAccent').value+'</span><br>' +
-    document.getElementById('e_ptLine3').value;
+  // Point slide — driven by points array now
+  savePointFields();
+  updatePointPreview();
 
   // Quote slide
   document.querySelector('.qt').textContent  = document.getElementById('e_quote').value;
@@ -1441,44 +1565,54 @@ function downloadSlide() {
   if(!activePanel) return;
   const id = activePanel.id.replace('tab-','');
   if(!canvases[id]) return;
-  renderSlideToPNG(id, `junction_${id}_${curBG}.png`);
+  if(id === 'point') {
+    // Download current point only
+    savePointFields();
+    renderSlideToPNG('point', `junction_point_${(curPointIdx+1).toString().padStart(2,'0')}_${curBG}.png`, curPointIdx);
+  } else {
+    renderSlideToPNG(id, `junction_${id}_${curBG}.png`);
+  }
 }
 
 function downloadAll() {
-  ['scripture','title','point','quote'].forEach((type,i) => {
+  savePointFields();
+  // Build full list: scripture, title, all points, quote
+  const jobs = [];
+  jobs.push({ type:'scripture', file:`junction_01_scripture_${curBG}.png` });
+  jobs.push({ type:'title',     file:`junction_02_title_${curBG}.png` });
+  points.forEach((pt, i) => {
+    jobs.push({ type:'point', ptIdx:i, file:`junction_${(3+i).toString().padStart(2,'0')}_point_${(i+1).toString().padStart(2,'0')}_${curBG}.png` });
+  });
+  jobs.push({ type:'quote', file:`junction_${(3+points.length).toString().padStart(2,'0')}_quote_${curBG}.png` });
+
+  jobs.forEach((job, i) => {
     setTimeout(()=>{
-      renderSlideToPNG(type, `junction_${(i+1).toString().padStart(2,'0')}_${type}_${curBG}.png`);
+      renderSlideToPNG(job.type, job.file, job.ptIdx);
     }, i*700);
   });
 }
 
-function renderSlideToPNG(slideType, filename) {
+function renderSlideToPNG(slideType, filename, ptIdx) {
   const off = document.createElement('canvas');
   off.width = W; off.height = H;
   const ctx = off.getContext('2d');
   // 1. Background (photo or painted)
   drawBGOrPhoto(ctx, W, H);
-  // 2. Text layer (reads live DOM values)
-  drawTextLayer(ctx, slideType);
+  // 2. Text layer
+  const accent = curAccent;
+  ctx.save();
+  ctx.textBaseline = 'top';
+  if(slideType === 'scripture') drawScripture(ctx, accent);
+  else if(slideType === 'title') drawTitle(ctx, accent);
+  else if(slideType === 'point') drawPoint(ctx, accent, ptIdx != null ? ptIdx : curPointIdx);
+  else if(slideType === 'quote') drawQuote(ctx, accent);
+  drawWatermark(ctx);
+  ctx.restore();
 
   const link = document.createElement('a');
   link.download = filename;
   link.href = off.toDataURL('image/png');
   link.click();
-}
-
-function drawTextLayer(ctx, slideType) {
-  const accent = curAccent;
-  ctx.save();
-  ctx.textBaseline = 'top';
-
-  if(slideType === 'scripture') drawScripture(ctx, accent);
-  else if(slideType === 'title') drawTitle(ctx, accent);
-  else if(slideType === 'point') drawPoint(ctx, accent);
-  else if(slideType === 'quote') drawQuote(ctx, accent);
-
-  drawWatermark(ctx);
-  ctx.restore();
 }
 
 // ── SCRIPTURE ─────────────────────────────
@@ -1557,11 +1691,13 @@ function drawTitle(ctx, accent) {
 }
 
 // ── POINT ─────────────────────────────────
-function drawPoint(ctx, accent) {
-  const label = _v('e_ptLabel', 'Point 01 —');
-  const l1    = _v('e_ptLine1', 'Keep the');
-  const l2    = _v('e_ptAccent','MAIN THING');
-  const l3    = _v('e_ptLine3', 'the main thing');
+function drawPoint(ctx, accent, ptIdx) {
+  if(ptIdx == null) ptIdx = curPointIdx;
+  const pt = points[ptIdx] || points[0];
+  const label = pt.label  || 'Point 01 —';
+  const l1    = pt.line1  || '';
+  const l2    = pt.accent || '';
+  const l3    = pt.line3  || '';
 
   const xText = W*.06;
 
@@ -1667,6 +1803,7 @@ function initEditableHeader() {
 // ══════════════════════════════════
 window.onload = () => {
   initEditableHeader();
+  renderPointFields();
   renderAll();
 };
 </script>
